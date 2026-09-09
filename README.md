@@ -29,16 +29,18 @@ without duplicating the code in each repo.
 
 This is a plain sibling folder, not a pip package — apps that want the shared style live next
 to it (e.g. `script/Python/KleistekManager/` next to `script/Python/PlotStyleKit/`) and load
-the modules by path at runtime, trying the sibling folder first and falling back to a local
-copy or a no-op if `PlotStyleKit` isn't present, so the host app still runs standalone:
+the modules by path at runtime, trying a **local copy in the host app's own folder first**
+(so a single app can pin its own version if it ever needs to diverge), then falling back to
+the shared sibling folder, then a no-op if `PlotStyleKit` isn't present at all — so the host
+app still runs standalone, degraded:
 
 ```python
 import os, importlib.util as ilu
 
 def _carica_origin_style():
     here = os.path.dirname(os.path.abspath(__file__))
-    for path in (os.path.join(here, '..', 'PlotStyleKit', 'origin_style.py'),
-                 os.path.join(here, 'origin_style.py')):
+    for path in (os.path.join(here, 'origin_style.py'),
+                 os.path.join(here, '..', 'PlotStyleKit', 'origin_style.py')):
         if os.path.isfile(path):
             spec = ilu.spec_from_file_location('origin_style', path)
             mod = ilu.module_from_spec(spec)
@@ -51,9 +53,11 @@ if origin_style is not None:
     origin_style.applica_rcparams()
 ```
 
-The same pattern (with `plot_editor.pyw` in place of `origin_style.py`) is used to load the
-editor module lazily — see `KleistekManager.pyw`'s `_carica_plot_editor()` for the reference
-implementation.
+A host app should also surface a visible one-time warning when `origin_style` comes back `None`
+(e.g. a deferred `messagebox.showwarning` at startup) rather than silently degrading — see
+`KleistekManager.pyw`'s `__init__` for the reference pattern. The same loading pattern (with
+`plot_editor.pyw` in place of `origin_style.py`) is used to load the editor module lazily — see
+`KleistekManager.pyw`'s `_carica_plot_editor()` for the reference implementation.
 
 ## Requirements
 
