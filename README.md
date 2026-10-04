@@ -24,6 +24,9 @@ without duplicating the code in each repo.
   Can be run standalone or embedded by a host app (`PlotEditor.carica_figura(fig)` loads an
   in-memory figure into a `Toplevel`, as KleistekManager's `File → Edit Figure...` does).
 - `plot_editor.bat` — Windows launcher (`pythonw plot_editor.pyw [figure.fig.pickle]`).
+- `LICENSE` — MIT license.
+- `requirements.txt` — Python dependencies (`tkinterdnd2` optional, commented out).
+- `tests/` — pytest suite for `origin_style.py` (`python -m pytest`).
 
 ## How consuming apps use this repo
 
@@ -65,6 +68,11 @@ A host app should also surface a visible one-time warning when `origin_style` co
 matplotlib, tkinter (standard library)
 tkinterdnd2   # optional — enables drag-and-drop pickle loading in plot_editor.pyw
 ```
+
+## Security note
+
+`plot_editor.pyw` opens figures with `pickle.load`, and unpickling a file can execute arbitrary
+code. Only open pickle files that you created yourself or that come from a source you trust.
 
 ## Running standalone
 

@@ -22,7 +22,7 @@ pythonw plot_editor.pyw [figure.fig.pickle]
 
 ## Dependencies
 
-No requirements file. Relies on packages in the system Python environment:
+See `requirements.txt` (MIT-licensed, see `LICENSE`; tests in `tests/`, run with `python -m pytest`). Relies on packages in the system Python environment:
 - `matplotlib` — plotting
 - `tkinter` — standard library GUI
 - `tkinterdnd2` — optional, enables drag-and-drop pickle loading
