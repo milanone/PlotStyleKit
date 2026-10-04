@@ -24,6 +24,9 @@ without duplicating the code in each repo.
   Can be run standalone or embedded by a host app (`PlotEditor.carica_figura(fig)` loads an
   in-memory figure into a `Toplevel`, as KleistekManager's `File → Edit Figure...` does).
 - `plot_editor.bat` — Windows launcher (`pythonw plot_editor.pyw [figure.fig.pickle]`).
+- `LICENSE` — MIT license.
+- `requirements.txt` — Python dependencies (`tkinterdnd2` optional, commented out).
+- `tests/` — pytest suite for `origin_style.py` (`python -m pytest`).
 
 ## How consuming apps use this repo
 

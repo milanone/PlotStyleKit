@@ -1,0 +1,3 @@
+matplotlib
+# tkinterdnd2   # optional: enables drag-and-drop pickle loading in plot_editor.pyw
+# pytest        # only needed to run the tests in tests/
