@@ -16,6 +16,7 @@ import traceback
 import tkinter as tk
 from tkinter import filedialog, messagebox, colorchooser, ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.ticker import AutoLocator, MultipleLocator
 import matplotlib.colors as mcolors
 import matplotlib.font_manager as fm
 
@@ -148,6 +149,17 @@ class PlotEditor:
         sp_tick.bind('<Return>', lambda e: self._apply_ticks())        # anche digitando + Invio
         sp_tick.bind('<FocusOut>', lambda e: self._apply_ticks())
 
+        tk.Label(lf, text="Etichette nel grafico:", bg=bg, font=('Arial', 9)).grid(
+            row=5, column=0, sticky='e', padx=2, pady=2)
+        self.var_intext = tk.DoubleVar(value=8)
+        sp_intext = tk.Spinbox(lf, from_=4, to=30, increment=1, width=5, textvariable=self.var_intext,
+                               command=self._apply_intext_fontsize)
+        sp_intext.grid(row=5, column=1, sticky='w', padx=2)
+        sp_intext.bind('<Return>', lambda e: self._apply_intext_fontsize())
+        sp_intext.bind('<FocusOut>', lambda e: self._apply_intext_fontsize())
+        tk.Label(lf, text="(es. etichette campioni/punti)", bg=bg, font=('Arial', 8), fg='#555').grid(
+            row=5, column=2, sticky='w', padx=2)
+
         # --- Dimensione figura (fissa, per paper) ---
         lfs = tk.LabelFrame(self.f_ctrl, text="Dimensione figura (cm)", bg=bg, font=('Arial', 9, 'bold'))
         lfs.pack(fill=tk.X, padx=8, pady=6)
@@ -204,6 +216,20 @@ class PlotEditor:
         self.var_grid = tk.BooleanVar(value=True)
         tk.Checkbutton(lf2, text="Griglia", variable=self.var_grid, bg=bg, font=('Arial', 9),
                        command=self._apply_grid).grid(row=1, column=0, columnspan=2, sticky='w', pady=2)
+
+        tk.Label(lf2, text="Passo tick X:", bg=bg, font=('Arial', 9)).grid(row=2, column=0, sticky='e', padx=2, pady=2)
+        self.var_tick_step_x = tk.StringVar()
+        e_step_x = tk.Entry(lf2, width=6, textvariable=self.var_tick_step_x)
+        e_step_x.grid(row=2, column=1, sticky='w', padx=2)
+        tk.Label(lf2, text="Y:", bg=bg, font=('Arial', 9)).grid(row=2, column=2, sticky='e', padx=2)
+        self.var_tick_step_y = tk.StringVar()
+        e_step_y = tk.Entry(lf2, width=6, textvariable=self.var_tick_step_y)
+        e_step_y.grid(row=2, column=3, sticky='w', padx=2)
+        for _e in (e_step_x, e_step_y):        # indipendenti: X e Y possono avere passi diversi
+            _e.bind('<Return>', lambda ev: self._apply_tick_step())
+            _e.bind('<FocusOut>', lambda ev: self._apply_tick_step())
+        tk.Label(lf2, text="(vuoto = auto)", bg=bg, font=('Arial', 8),
+                 fg='#555').grid(row=3, column=0, columnspan=4, sticky='w', padx=2)
 
         # --- Limiti assi ---
         lf3 = tk.LabelFrame(self.f_ctrl, text="Limiti assi (vuoto = auto)", bg=bg, font=('Arial', 9, 'bold'))
@@ -372,6 +398,25 @@ class PlotEditor:
         self.toolbar = NavigationToolbar2Tk(self.canvas, self.f_toolbar)
         # I tick label vengono rigenerati a ogni ridisegno: riapplica lì la famiglia font
         self.canvas.mpl_connect('draw_event', self._reapply_tick_font)
+        # Rete di sicurezza per il drag della legenda (set_draggable): il canvas
+        # vive dentro un Canvas Tk scrollabile con la toolbar accanto, e se il
+        # rilascio del mouse avviene fuori dal widget del grafico (es. sopra la
+        # toolbar, o appena fuori bordo) matplotlib non riceve mai il
+        # button_release_event corrispondente. Il drag interno resta "armato"
+        # (got_artist=True) e la legenda continua a seguire il mouse a ogni
+        # movimento successivo, anche senza tenere premuto alcun tasto. Forziamo
+        # lo stop qui su qualunque rilascio o uscita dall'area del grafico.
+        self.canvas.mpl_connect('button_release_event', self._stop_legend_drag)
+        self.canvas.mpl_connect('figure_leave_event', self._stop_legend_drag)
+        # In questo layout (canvas Agg dentro un Canvas Tk scrollabile) il
+        # pick_event di matplotlib arma il drag della legenda (got_artist=True)
+        # anche per click ben fuori dal suo riquadro — verificato tracciando
+        # Legend.contains(), che nel controllo diretto risulta False mentre
+        # on_pick scatta comunque. Ricontrolliamo qui col nostro hit-test,
+        # SUBITO dopo il pick (stesso giro di 'button_press_event', prima di
+        # qualunque 'motion_notify_event'), e disarmiamo se il click non era
+        # davvero sulla legenda.
+        self.canvas.mpl_connect('button_press_event', self._guard_legend_drag)
 
         self._path = path
         self.root.title(f"Plot Editor — {title}")
@@ -647,6 +692,12 @@ class PlotEditor:
         self.var_ylabel_fs.set(round(ax.yaxis.label.get_size(), 1))
         ticks = ax.get_xticklabels()
         self.var_tick.set(round(ticks[0].get_size(), 1) if ticks else 10)
+        in_texts = [t for t in ax.texts if t.get_text()]
+        self.var_intext.set(round(in_texts[0].get_size(), 1) if in_texts else 8)
+        xt = ax.get_xticks()
+        self.var_tick_step_x.set(f"{xt[1] - xt[0]:g}" if len(xt) >= 2 else '')
+        yt = ax.get_yticks()
+        self.var_tick_step_y.set(f"{yt[1] - yt[0]:g}" if len(yt) >= 2 else '')
         # i campi cm mostrano la dimensione del GRAFICO (senza l'eventuale titolo)
         w_in, h_in = self._export_in or tuple(self.fig.get_size_inches())
         self.var_w_cm.set(f"{w_in * 2.54:.2f}")
@@ -774,6 +825,25 @@ class PlotEditor:
             return
         if w_cm <= 0 or h_cm <= 0:
             return
+        # Se gli assi hanno un aspect ratio fisso (es. "biplot scala 1:1" nella
+        # PCA GUI), il riquadro del grafico è vincolato dal rapporto x/y dei
+        # dati e da UNA sola dimensione della figura (adjustable='box'): non
+        # si allarga affatto cambiando solo la larghezza, lo spazio in più
+        # diventa margine bianco simmetrico e il grafico sembra restringersi/
+        # spostarsi. Se l'utente ha cambiato una sola delle due dimensioni,
+        # scaliamo anche l'altra nella stessa proporzione così il riquadro
+        # cresce davvero, invece di lasciare solo margine vuoto.
+        if self.ax is not None and self.ax.get_aspect() not in ('auto', None) and self._export_in:
+            old_w = self._export_in[0] * 2.54
+            old_h = self._export_in[1] * 2.54
+            changed_w = old_w > 0 and abs(w_cm - old_w) > 1e-6
+            changed_h = old_h > 0 and abs(h_cm - old_h) > 1e-6
+            if changed_w and not changed_h:
+                h_cm = h_cm * (w_cm / old_w)
+            elif changed_h and not changed_w:
+                w_cm = w_cm * (h_cm / old_h)
+            self.var_w_cm.set(f"{w_cm:.2f}")
+            self.var_h_cm.set(f"{h_cm:.2f}")
         self._export_in = (w_cm / 2.54, h_cm / 2.54)   # dimensione del GRAFICO (senza titolo)
         self._relayout()
         self._resize_canvas_to_figure()
@@ -808,6 +878,26 @@ class PlotEditor:
             return
         self._apply_font_to(list(self.ax.get_xticklabels()) + list(self.ax.get_yticklabels()))
 
+    def _stop_legend_drag(self, event=None):
+        """Forza lo stop di un drag di legenda eventualmente rimasto "armato"
+        (vedi commento in _embed): senza questo, un rilascio del mouse perso
+        lascia la legenda agganciata al cursore indefinitamente."""
+        leg = self.ax.get_legend() if self.ax is not None else None
+        drag = getattr(leg, '_draggable', None)
+        if drag is not None and drag.got_artist:
+            drag.got_artist = False
+
+    def _guard_legend_drag(self, event):
+        """Veto di un drag armato per errore da pick_event su un click fuori
+        dalla legenda (vedi commento in _embed)."""
+        leg = self.ax.get_legend() if self.ax is not None else None
+        drag = getattr(leg, '_draggable', None) if leg is not None else None
+        if drag is None or not drag.got_artist:
+            return
+        contains, _ = leg.contains(event)
+        if not contains:
+            drag.got_artist = False
+
     def _apply_font(self):
         if self.ax is None or self._syncing:
             return
@@ -818,10 +908,24 @@ class PlotEditor:
         if self.fig is not None:
             self.fig._editor_font_family = fam   # persiste nel pickle
         self._apply_font_to([self.ax.title, self.ax.xaxis.label, self.ax.yaxis.label])
+        self._apply_font_to(self.ax.texts)   # etichette libere nel grafico (es. campioni/punti)
         self._reapply_tick_font()
         leg = self.ax.get_legend()
         if leg is not None:
             self._apply_font_to(leg.get_texts())
+        self._draw()
+
+    def _apply_intext_fontsize(self):
+        """Dimensione delle etichette 'libere' nel grafico (ax.text/annotate, es.
+        nomi campione o lettere di una legenda-punti): non hanno un controllo
+        dedicato come titolo/assi/tick perché sono un numero variabile di Text
+        indipendenti, quindi un'unica dimensione uniforme per tutte."""
+        if self.ax is None or self._syncing:
+            return
+        size = self.var_intext.get()
+        for t in self.ax.texts:
+            if t.get_text():   # esclude gli anchor vuoti delle frecce (ax.annotate(''))
+                t.set_fontsize(size)
         self._draw()
 
     def _apply_scale(self, which):
@@ -841,6 +945,34 @@ class PlotEditor:
         if self.ax is None or self._syncing:
             return
         self.ax.grid(self.var_grid.get())
+        self._draw()
+
+    def _apply_tick_step(self):
+        """Passo dei tick maggiori, indipendente per X e Y (un campo vuoto =
+        auto su quell'asse). Utile in generale (es. griglia a intervalli
+        tondi); per un aspect bloccato (biplot "scala 1:1") impostare lo
+        STESSO valore su entrambi allinea la griglia alla scala fisica già
+        uguale — ma nulla obbliga i due passi a coincidere."""
+        if self.ax is None or self._syncing:
+            return
+        parsed = []
+        for label, var in (('X', self.var_tick_step_x), ('Y', self.var_tick_step_y)):
+            txt = var.get().strip().replace(',', '.')
+            if not txt:
+                parsed.append(None)
+                continue
+            try:
+                step = float(txt)
+            except ValueError:
+                messagebox.showwarning("Passo tick", f"Il passo {label} deve essere numerico (vuoto = automatico).")
+                return
+            if step <= 0:
+                messagebox.showwarning("Passo tick", f"Il passo {label} deve essere positivo (vuoto = automatico).")
+                return
+            parsed.append(step)
+        step_x, step_y = parsed
+        self.ax.xaxis.set_major_locator(MultipleLocator(step_x) if step_x else AutoLocator())
+        self.ax.yaxis.set_major_locator(MultipleLocator(step_y) if step_y else AutoLocator())
         self._draw()
 
     def _apply_limits(self):
@@ -878,12 +1010,31 @@ class PlotEditor:
     def _apply_legend(self, preserve_pos=False):
         if self.ax is None or self._syncing:
             return
+        old_leg = self.ax.get_legend()
         if not self.var_legend.get():
-            leg = self.ax.get_legend()
-            if leg is not None:
-                leg.remove()
+            if old_leg is not None:
+                old_leg.remove()
             self._draw()
             return
+        # ax.legend() senza handles/labels espliciti li ricava con
+        # get_legend_handles_labels(), che guarda solo gli artisti REALMENTE
+        # presenti sugli assi (ax.lines, ax.patches, ...). Alcuni grafici (es.
+        # il biplot della PCA GUI) costruiscono invece la legenda con handle
+        # "proxy" — Line2D fittizi con colore+simbolo di gruppo — passati
+        # esplicitamente a legend() ma mai aggiunti davvero agli assi:
+        # get_legend_handles_labels() non li vede affatto, e ricreare la
+        # legenda (riposizionamento, refresh dopo modifica di una linea, ecc.)
+        # la svuotava silenziosamente (testo/font che "sparisce" e non torna
+        # più). Se l'auto-rilevamento non trova nulla ma una legenda esiste
+        # già, riusa il SUO contenuto invece di perderlo. Quando invece gli
+        # handle sono reali (caso normale), l'auto-rilevamento resta
+        # prioritario: così un'etichetta di linea appena rinominata continua a
+        # comparire aggiornata in legenda, come prima di questa modifica.
+        handles, labels = self.ax.get_legend_handles_labels()
+        if not handles and old_leg is not None:
+            handles = list(getattr(old_leg, 'legend_handles', None)
+                            or getattr(old_leg, 'legendHandles', []))
+            labels = [t.get_text() for t in old_leg.get_texts()]
         # Se richiesto (refresh dopo modifica di una linea), conserva la posizione
         # trascinata invece di ripiombare sul 'loc' del menu.
         anchor = self._legend_anchor() if preserve_pos else None
@@ -892,11 +1043,11 @@ class PlotEditor:
             # sull'ancora misurata. Col padding di default (0.5) ogni ricreazione
             # spostava la legenda di quel margine, facendola "derivare" a ogni
             # modifica di linea (spessore/colore/etichetta).
-            leg = self.ax.legend(fontsize=self.var_leg_fs.get(), loc='lower left',
+            leg = self.ax.legend(handles, labels, fontsize=self.var_leg_fs.get(), loc='lower left',
                                   bbox_to_anchor=anchor, bbox_transform=self.ax.transAxes,
                                   borderaxespad=0.0)
         else:
-            leg = self.ax.legend(fontsize=self.var_leg_fs.get(), loc=self.var_leg_loc.get())
+            leg = self.ax.legend(handles, labels, fontsize=self.var_leg_fs.get(), loc=self.var_leg_loc.get())
         if leg is not None:
             if self._font_family:
                 self._apply_font_to(leg.get_texts())   # la legenda ricreata riprende il font

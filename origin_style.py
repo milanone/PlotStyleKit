@@ -18,7 +18,7 @@ nascono già così, e i tick rigenerati su zoom mantengono lo stile).
 pulsante dell'editor).
 """
 import matplotlib as mpl
-from matplotlib.ticker import AutoMinorLocator
+from matplotlib.ticker import AutoLocator, AutoMinorLocator, MultipleLocator
 
 ORIGIN_FONT = 'Arial'
 
@@ -105,11 +105,35 @@ def applica_stile_origin(ax, fig=None, set_size=True, preset=DEFAULT_PRESET):
                    top=False, right=False)
     ax.grid(False)
 
-    # asse X esatto sui dati (nessun margine); la Y mantiene i suoi margini
-    try:
-        ax.autoscale(enable=True, axis='x', tight=True)
-    except Exception:
-        pass
+    # asse X esatto sui dati (nessun margine); la Y mantiene i suoi margini.
+    # Eccezione: con aspect bloccato (es. biplot "scala 1:1") gli assi devono
+    # restare scalati allo stesso modo — tirare a filo dati SOLO la X mentre
+    # la Y mantiene margine rompe quella coerenza (e ignora xlim già scelti
+    # apposta dal chiamante, es. per lasciare spazio a frecce/etichette).
+    if ax.get_aspect() in ('auto', None):
+        try:
+            ax.autoscale(enable=True, axis='x', tight=True)
+        except Exception:
+            pass
+    else:
+        # aspect bloccato ("squared axis", es. biplot "scala 1:1"): la scala
+        # fisica è già identica su X e Y, ma se i numeri dei tick cadono a
+        # intervalli diversi sui due assi (scelta indipendente del locator
+        # automatico di matplotlib) la griglia appare comunque sbilanciata.
+        # Riusa lo STESSO passo su entrambi gli assi — quello scelto per il
+        # range più ampio, così l'asse più corto non si ritrova con troppi
+        # pochi tick.
+        try:
+            xlo, xhi = ax.get_xlim()
+            ylo, yhi = ax.get_ylim()
+            lo, hi = (xlo, xhi) if (xhi - xlo) >= (yhi - ylo) else (ylo, yhi)
+            ticks = AutoLocator().tick_values(lo, hi)   # stessi passi "puliti" (1/2/2.5/5/10) del default
+            if len(ticks) >= 2:
+                step = ticks[1] - ticks[0]
+                ax.xaxis.set_major_locator(MultipleLocator(step))
+                ax.yaxis.set_major_locator(MultipleLocator(step))
+        except Exception:
+            pass
 
     ax.title.set_fontsize(FS_TITLE)
     ax.xaxis.label.set_fontsize(FS_LABEL)
