@@ -69,6 +69,11 @@ matplotlib, tkinter (standard library)
 tkinterdnd2   # optional — enables drag-and-drop pickle loading in plot_editor.pyw
 ```
 
+## Security note
+
+`plot_editor.pyw` opens figures with `pickle.load`, and unpickling a file can execute arbitrary
+code. Only open pickle files that you created yourself or that come from a source you trust.
+
 ## Running standalone
 
 ```

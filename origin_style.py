@@ -17,6 +17,8 @@ nascono già così, e i tick rigenerati su zoom mantengono lo stile).
 `applica_stile_origin(ax, fig)` ristiliza una figura già esistente (usato dal
 pulsante dell'editor).
 """
+import warnings
+
 import matplotlib as mpl
 from matplotlib.ticker import AutoLocator, AutoMinorLocator, MultipleLocator
 
@@ -40,6 +42,9 @@ FS_LEGEND = 8
 
 
 def size_inches(preset=DEFAULT_PRESET):
+    if preset not in ORIGIN_PRESETS:
+        warnings.warn(f"Preset Origin sconosciuto {preset!r}: uso '{DEFAULT_PRESET}'.",
+                      stacklevel=2)
     w_cm, h_cm = ORIGIN_PRESETS.get(preset, ORIGIN_PRESETS[DEFAULT_PRESET])
     return (w_cm / 2.54, h_cm / 2.54)
 

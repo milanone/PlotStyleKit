@@ -52,3 +52,9 @@ def test_applica_stile_origin_idempotent(fig_ax, preset):
     origin_style.applica_stile_origin(ax, fig, preset=preset)
     second = ax.get_position().bounds
     assert second == pytest.approx(first)
+
+
+def test_size_inches_unknown_preset_warns_and_falls_back():
+    with pytest.warns(UserWarning):
+        size = origin_style.size_inches('douple')
+    assert size == origin_style.size_inches(origin_style.DEFAULT_PRESET)

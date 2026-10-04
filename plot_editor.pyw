@@ -33,8 +33,9 @@ try:
     _spec = _ilu.spec_from_file_location('origin_style', _os_path)
     origin_style = _ilu.module_from_spec(_spec)
     _spec.loader.exec_module(origin_style)
-except Exception:
+except Exception as _e:
     origin_style = None
+    _origin_style_error = _e
 
 LINESTYLES = ['-', '--', '-.', ':', 'None']
 LEGEND_LOCS = ['best', 'upper right', 'upper left', 'lower left', 'lower right',
@@ -854,7 +855,8 @@ class PlotEditor:
         if self.ax is None:
             return
         if origin_style is None:
-            messagebox.showerror("Stile Origin", "origin_style.py non disponibile.")
+            messagebox.showerror("Stile Origin", "origin_style.py non disponibile.\n"
+                                 f"{globals().get('_origin_style_error', '')}")
             return
         preset = self._layout_map.get(self.var_layout.get(), 'single')
         origin_style.applica_stile_origin(self.ax, self.fig, set_size=True, preset=preset)
@@ -976,7 +978,7 @@ class PlotEditor:
         self._draw()
 
     def _apply_limits(self):
-        if self.ax is None:
+        if self.ax is None or self._syncing:
             return
         def _parse(v):
             v = v.strip()
