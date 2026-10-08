@@ -102,8 +102,12 @@ def applica_stile_origin(ax, fig=None, set_size=True, preset=DEFAULT_PRESET):
         s.set_linewidth(1.2)
 
     # tick esterni, solo su asse inferiore e sinistro; 1 minor per coppia di major
-    ax.xaxis.set_minor_locator(AutoMinorLocator(2))
-    ax.yaxis.set_minor_locator(AutoMinorLocator(2))
+    # (not on log scales: AutoMinorLocator does not work there and matplotlib warns;
+    # the default log minor ticks are fine)
+    if ax.get_xscale() == 'linear':
+        ax.xaxis.set_minor_locator(AutoMinorLocator(2))
+    if ax.get_yscale() == 'linear':
+        ax.yaxis.set_minor_locator(AutoMinorLocator(2))
     ax.tick_params(which='major', direction='out', length=6, width=1.2,
                    top=False, right=False, labelsize=FS_TICK)
     ax.tick_params(which='minor', direction='out', length=3, width=1.0,
