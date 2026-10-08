@@ -23,7 +23,6 @@ without duplicating the code in each repo.
   PNG/SVG/PDF at the exact configured size (300 dpi), with an optional "bbox tight" crop.
   Can be run standalone or embedded by a host app (`PlotEditor.carica_figura(fig)` loads an
   in-memory figure into a `Toplevel`, as KleistekManager's `File → Edit Figure...` does).
-- `plot_editor.bat` — Windows launcher (`pythonw plot_editor.pyw [figure.fig.pickle]`).
 - `LICENSE` — MIT license.
 - `requirements.txt` — Python dependencies (`tkinterdnd2` optional, commented out).
 - `tests/` — pytest suite for `origin_style.py` (`python -m pytest`).
@@ -77,6 +76,5 @@ code. Only open pickle files that you created yourself or that come from a sourc
 ## Running standalone
 
 ```
-plot_editor.bat [figure.fig.pickle]
 pythonw plot_editor.pyw [figure.fig.pickle]
 ```

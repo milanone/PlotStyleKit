@@ -13,10 +13,7 @@ no UI of its own beyond the editor — it's a library consumed by host apps as a
 ## Running
 
 ```bash
-# Windows batch launcher (optional pickle path arg)
-plot_editor.bat [figure.fig.pickle]
-
-# Direct Python (headless/no console window)
+# Headless / no console window (optional pickle path arg)
 pythonw plot_editor.pyw [figure.fig.pickle]
 ```
 
