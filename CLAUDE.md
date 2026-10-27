@@ -37,7 +37,7 @@ How a host finds it is the **bootstrap in README.md** (between the `bootstrap:be
 `PLOTSTYLEKIT`, the folder the user chose (`~/.plotstylekit.json`), the sibling folder, `~/progetti/PlotStyleKit`. When it fails
 the host shows a warning asking for the folder, with a Cancel that is remembered (`declined`) and a File > PlotStyleKit... item;
 without the kit the host needs fallbacks (plain look, plain `savefig` / pickle, no editor). `tests/test_plotstylekit.py` executes
-the README snippet, so the documented bootstrap cannot drift. A breaking change needs `API` + 1 and a note here.
+the README snippet, so the documented bootstrap cannot drift. Anything a host can start to call, and every breaking change, needs `API` + 1 (history in the module's comment) and the host's `PSK_MIN_API` follows.
 
 ## origin_style.py
 
@@ -102,6 +102,20 @@ loaded figure. `PlotEditor.carica()` loads from a file; `PlotEditor.carica_figur
 in-memory figure (both via `_embed()`) — this is how a host app opens the editor directly on its own
 current figure without a save/reopen round-trip (pass an independent copy, e.g.
 `pickle.loads(pickle.dumps(self.fig))`, so edits/exports never disturb the host's live view).
+
+**Free text labels as objects** (`ax.texts`: `_hit_text`, `_texts_press` / `_texts_motion` / `_texts_release`, `_text_menu`,
+`_text_edit` / `_text_color` / `_text_size` / `_text_delete`, `_new_text`; the section after `_guard_legend_drag`). The three
+canvas handlers are connected right after `_guard_legend_drag`, so matplotlib's own `pick_event` (which arms the legend drag)
+has already run: a click on a label calls `_disarm_legend_drag()`, a click inside the legend returns at once (the legend is drawn
+above the labels and keeps it), and while the toolbar's zoom/pan is active (`_navigating()`, `toolbar.mode`) nothing happens.
+Hit test = the label's `get_window_extent` widened by 4 px; of overlapping labels the highest zorder, then the latest created,
+wins; empty texts (the anchors of `ax.annotate('')`) are skipped. Dragging works in screen pixels and converts back with the
+label's own inverse transform (`_text_transform`: for an `Annotation` the text's `anncoords` transform, and `xyann` is set, so the
+arrow keeps pointing at `xy`), keeping the grab offset so the label does not jump; so it behaves the same in data and axes
+coordinates. Left double-click edits (`simpledialog`, starting from the current text; cancel or empty keeps it), right-click
+pops the four-entry menu, `Nuova etichetta di testo...` adds a `transAxes` (0.5, 0.5) label with `var_intext` as size. All are
+ordinary `Text` changes redrawn with `_draw()`: the pickle format does not change. Tests: `tests/test_plot_editor_texts.py`
+(MouseEvents on the editor canvas; the same gestures were also checked with real Tk events).
 
 The `Stile Origin` panel offers a layout dropdown (single/double) and an `Applica stile Origin`
 button (`_apply_origin_style()`). The dropdown is kept in sync with the figure's current size by

@@ -63,6 +63,11 @@ def test_pinned_legend_is_released_on_the_copy(fig):
     assert fig.axes[0].get_legend()._loc != 0                            # the live legend is still pinned
 
 
+def test_a_host_can_keep_its_legend_position(fig):
+    copy = psk.publication_copy(fig, unpin=False)
+    assert copy.axes[0].get_legend()._loc != 0                           # still the host's fixed position
+
+
 def test_every_axes_is_styled():
     f, (a, b) = plt.subplots(2, 1)
     a.plot([1, 2]); b.plot([1, 2])

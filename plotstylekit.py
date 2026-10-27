@@ -18,7 +18,7 @@ How a host finds this file is the bootstrap in README.md ("Using it from a progr
 a copy next to the program, PLOTSTYLEKIT, the folder the user chose, the sibling folder PlotStyleKit, ~/progetti/PlotStyleKit. The old way
 (loading origin_style.py and plot_editor.pyw directly) keeps working: nothing in those two files changed.
 
-`API` is bumped when something a host calls changes incompatibly; the bootstrap refuses a version below what the
+`API` is bumped when a host can call something new or changed (a host sets `PSK_MIN_API` to the version it needs); the bootstrap refuses a version below what the
 host asks for and the host runs unstyled with a clear message instead of failing later.
 """
 import importlib.util
@@ -26,8 +26,9 @@ import os
 import pickle
 import traceback
 
-API = 1
-VERSION = "1.0.0"
+# API history: 1 = first version; 2 = `unpin` parameter of publication_copy() and the functions that use it
+API = 2
+VERSION = "1.1.0"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _loaded = {}
@@ -101,14 +102,16 @@ def unpin_legend(ax):
 
 # ---- the copy handed to files and to the editor --------------------------------------------------
 
-def publication_copy(fig, preset='single', clean=None):
+def publication_copy(fig, preset='single', clean=None, unpin=True):
     """An independent copy of `fig`, restyled at the publication `preset`. `clean(copy)` is called on the copy
-    first, to remove what only belongs to the host's live view (a cursor, markers); the live figure is untouched."""
+    first, to remove what only belongs to the host's live view (a cursor, markers); the live figure is untouched.
+    The legend goes back to loc='best' (`unpin`) unless the host fixed its position on purpose and wants it kept."""
     copy = pickle.loads(pickle.dumps(fig))
     if clean is not None:
         clean(copy)
-    for ax in copy.axes:
-        unpin_legend(ax)
+    if unpin:
+        for ax in copy.axes:
+            unpin_legend(ax)
     if copy.axes:
         for ax in copy.axes[:-1]:                     # several axes: all styled, the last one sets the size
             style(ax, None, set_size=False)
@@ -116,15 +119,15 @@ def publication_copy(fig, preset='single', clean=None):
     return copy
 
 
-def save_pickle(fig, path, preset='single', clean=None):
+def save_pickle(fig, path, preset='single', clean=None, unpin=True):
     """The publication copy as a matplotlib pickle: reopenable with the plot editor as a live Figure."""
     with open(path, 'wb') as f:
-        pickle.dump(publication_copy(fig, preset, clean), f)
+        pickle.dump(publication_copy(fig, preset, clean, unpin), f)
 
 
-def save_image(fig, path, preset='single', dpi=300, clean=None):
+def save_image(fig, path, preset='single', dpi=300, clean=None, unpin=True):
     """The publication copy as PNG / PDF / SVG, by the extension of `path`."""
-    publication_copy(fig, preset, clean).savefig(path, dpi=dpi)
+    publication_copy(fig, preset, clean, unpin).savefig(path, dpi=dpi)
 
 
 # ---- the menu actions, with their dialogs ----------------------------------------------------------
@@ -146,22 +149,22 @@ def _save_dialog(title, fig, parent, initialdir, initialfile, extension, filetyp
 
 
 def save_pickle_dialog(fig, parent=None, initialdir=None, initialfile=None, preset='single', clean=None,
-                       title="Save Figure"):
+                       unpin=True, title="Save Figure"):
     """File > Save Figure (pickle)...: asks for the file, saves the publication copy, reports. Returns the path or None."""
     return _save_dialog(title, fig, parent, initialdir, initialfile, '.fig.pickle',
                         [("Matplotlib Figure (pickle)", "*.pickle *.pkl"), ("All Files", "*.*")],
-                        save_pickle, preset=preset, clean=clean)
+                        save_pickle, preset=preset, clean=clean, unpin=unpin)
 
 
 def save_image_dialog(fig, parent=None, initialdir=None, initialfile=None, preset='single', dpi=300, clean=None,
-                      title="Save Figure Image"):
+                      unpin=True, title="Save Figure Image"):
     """File > Save Figure Image (PNG, PDF, SVG)...: same, as an image at the exact size of the preset."""
     return _save_dialog(title, fig, parent, initialdir, initialfile, '.png',
                         [("PNG", "*.png"), ("PDF", "*.pdf"), ("SVG", "*.svg"), ("All Files", "*.*")],
-                        save_image, preset=preset, dpi=dpi, clean=clean)
+                        save_image, preset=preset, dpi=dpi, clean=clean, unpin=unpin)
 
 
-def edit_dialog(fig, parent, title="current figure", preset='single', clean=None, geometry="1300x820"):
+def edit_dialog(fig, parent, title="current figure", preset='single', clean=None, unpin=True, geometry="1300x820"):
     """File > Edit Figure...: the plot editor, in its own window, on a publication copy of `fig`. Returns the editor
     or None (a message box says why)."""
     import tkinter as tk
@@ -173,7 +176,7 @@ def edit_dialog(fig, parent, title="current figure", preset='single', clean=None
         messagebox.showerror("Edit Figure", f"The plot editor is not available:\n{e}", parent=parent)
         return None
     try:
-        copy = publication_copy(fig, preset, clean)
+        copy = publication_copy(fig, preset, clean, unpin)
     except Exception as e:
         traceback.print_exc()
         messagebox.showerror("Edit Figure", f"Cannot duplicate the figure:\n{e}", parent=parent)

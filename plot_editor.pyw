@@ -14,10 +14,11 @@ import sys
 import pickle
 import traceback
 import tkinter as tk
-from tkinter import filedialog, messagebox, colorchooser, ttk
+from tkinter import filedialog, messagebox, colorchooser, simpledialog, ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.ticker import AutoLocator, MultipleLocator
 import matplotlib.colors as mcolors
+import matplotlib.text as mtext
 import matplotlib.font_manager as fm
 
 try:
@@ -53,6 +54,7 @@ class PlotEditor:
         self.ax = None
         self.canvas = None
         self.toolbar = None
+        self._txt_drag = None    # a free text label being dragged: dict(text, dx, dy, x0, y0, moved)
         self._path = None
         self._syncing = False   # blocca gli handler durante il popolamento dei controlli
         self._font_family = None # famiglia font scelta (riapplicata ai tick a ogni draw)
@@ -160,6 +162,12 @@ class PlotEditor:
         sp_intext.bind('<FocusOut>', lambda e: self._apply_intext_fontsize())
         tk.Label(lf, text="(es. etichette campioni/punti)", bg=bg, font=('Arial', 8), fg='#555').grid(
             row=5, column=2, sticky='w', padx=2)
+        tk.Button(lf, text="Nuova etichetta di testo...", command=self._new_text).grid(
+            row=6, column=0, columnspan=3, sticky='w', padx=6, pady=(4, 0))
+        tk.Label(lf, text="Etichette di testo: trascina per spostare, doppio clic per modificare il testo, "
+                          "clic destro per colore, dimensione ed elimina.",
+                 bg=bg, font=('Arial', 8), fg='#555', justify='left', wraplength=340).grid(
+            row=7, column=0, columnspan=3, sticky='w', padx=6, pady=(0, 4))
 
         # --- Dimensione figura (fissa, per paper) ---
         lfs = tk.LabelFrame(self.f_ctrl, text="Dimensione figura (cm)", bg=bg, font=('Arial', 9, 'bold'))
@@ -418,6 +426,13 @@ class PlotEditor:
         # qualunque 'motion_notify_event'), e disarmiamo se il click non era
         # davvero sulla legenda.
         self.canvas.mpl_connect('button_press_event', self._guard_legend_drag)
+        # Free text labels (ax.texts) as objects: drag, double click, right click. Connected after the legend
+        # guard on purpose (see _texts_press).
+        self._txt_drag = None
+        self.canvas.mpl_connect('button_press_event', self._texts_press)
+        self.canvas.mpl_connect('motion_notify_event', self._texts_motion)
+        self.canvas.mpl_connect('button_release_event', self._texts_release)
+        self.canvas.mpl_connect('figure_leave_event', self._texts_release)
 
         self._path = path
         self.root.title(f"Plot Editor — {title}")
@@ -899,6 +914,148 @@ class PlotEditor:
         contains, _ = leg.contains(event)
         if not contains:
             drag.got_artist = False
+
+    # ------------------------------------------------------------------
+    # FREE TEXT LABELS (ax.texts): move, edit, colour, size, delete, add
+    # ------------------------------------------------------------------
+    def _navigating(self):
+        """True while the toolbar's zoom or pan is active: the clicks belong to it."""
+        return self.toolbar is not None and bool(self.toolbar.mode)
+
+    def _disarm_legend_drag(self):
+        """Cancel a legend drag that matplotlib's pick_event armed for this click (same as _guard_legend_drag)."""
+        leg = self.ax.get_legend() if self.ax is not None else None
+        drag = getattr(leg, '_draggable', None) if leg is not None else None
+        if drag is not None and drag.got_artist:
+            drag.got_artist = False
+
+    def _hit_text(self, event):
+        """The free text label under the mouse, or None. The test is on the label's box on the screen, widened by 4
+        px so that a small label is easy to grab; of overlapping labels the one drawn last (highest zorder, then
+        latest created) wins."""
+        if self.ax is None or self.canvas is None or event.x is None or event.y is None:
+            return None
+        renderer = self.canvas.get_renderer()
+        for _, t in sorted(enumerate(self.ax.texts), key=lambda it: (it[1].get_zorder(), it[0]), reverse=True):
+            if not t.get_visible() or not t.get_text():     # empty = the anchor of an arrow (ax.annotate(''))
+                continue
+            try:
+                bb = t.get_window_extent(renderer)
+            except Exception:
+                continue
+            if bb.width > 0 and bb.x0 - 4 <= event.x <= bb.x1 + 4 and bb.y0 - 4 <= event.y <= bb.y1 + 4:
+                return t
+        return None
+
+    def _text_transform(self, t):
+        """The transform of the coordinates `t` is positioned in (data, axes, ...); an Annotation's text has its own."""
+        if isinstance(t, mtext.Annotation):
+            try:
+                return t._get_xy_transform(self.canvas.get_renderer(), t.anncoords)
+            except Exception:
+                pass
+        return t.get_transform()
+
+    def _texts_press(self, event):
+        self._txt_drag = None
+        if self.ax is None or self._navigating() or event.button not in (1, 3):
+            return
+        leg = self.ax.get_legend()
+        if leg is not None and leg.contains(event)[0]:      # the legend is drawn above the labels: it keeps the click
+            return
+        t = self._hit_text(event)
+        if t is None:
+            return
+        self._disarm_legend_drag()                           # the click is on a label, not on the legend
+        if event.button == 3:
+            self._text_menu(t, event)
+        elif event.dblclick:
+            self._text_edit(t)
+        else:
+            # work on the screen and convert back with the label's own inverse transform: it moves the same in
+            # data and in axes coordinates; the grab offset keeps the label from jumping to the pointer
+            ax_, ay_ = self._text_transform(t).transform(t.get_position())
+            self._txt_drag = dict(text=t, dx=ax_ - event.x, dy=ay_ - event.y, x0=event.x, y0=event.y, moved=False)
+
+    def _texts_motion(self, event):
+        d = self._txt_drag
+        if d is None or event.x is None or event.y is None:
+            return
+        if event.button is None:                             # the release was lost (left the widget): stop
+            self._txt_drag = None
+            return
+        if not d['moved'] and abs(event.x - d['x0']) + abs(event.y - d['y0']) < 3:
+            return
+        d['moved'] = True
+        t = d['text']
+        pos = tuple(self._text_transform(t).inverted().transform((event.x + d['dx'], event.y + d['dy'])))
+        if isinstance(t, mtext.Annotation):
+            t.xyann = pos
+        else:
+            t.set_position(pos)
+        self._draw()
+
+    def _texts_release(self, event=None):
+        self._txt_drag = None
+
+    def _text_menu(self, t, event):
+        m = tk.Menu(self.root, tearoff=0)
+        m.add_command(label="Modifica testo...", command=lambda: self._text_edit(t))
+        m.add_command(label="Colore...", command=lambda: self._text_color(t))
+        m.add_command(label="Dimensione font...", command=lambda: self._text_size(t))
+        m.add_separator()
+        m.add_command(label="Elimina", command=lambda: self._text_delete(t))
+        gui = getattr(event, 'guiEvent', None)
+        try:
+            m.tk_popup(int(getattr(gui, 'x_root', self.root.winfo_pointerx())),
+                       int(getattr(gui, 'y_root', self.root.winfo_pointery())))
+        finally:
+            m.grab_release()
+
+    def _text_edit(self, t):
+        new = simpledialog.askstring("Modifica etichetta", "Testo:", initialvalue=t.get_text(), parent=self.root)
+        if new:                                              # cancel or empty: keep the label as it is
+            t.set_text(new)
+            self._draw()
+
+    def _text_color(self, t):
+        try:
+            init = mcolors.to_hex(t.get_color())
+        except (ValueError, TypeError):
+            init = '#000000'
+        rgb, hexcol = colorchooser.askcolor(color=init, title="Colore etichetta", parent=self.root)
+        self.root.lift()
+        self.root.focus_force()
+        if hexcol is not None:
+            t.set_color(hexcol)
+            self._draw()
+
+    def _text_size(self, t):
+        size = simpledialog.askfloat("Dimensione font", "Dimensione (pt) di questa etichetta:",
+                                     initialvalue=round(float(t.get_fontsize()), 1), minvalue=1, maxvalue=200,
+                                     parent=self.root)
+        if size:
+            t.set_fontsize(size)
+            self._draw()
+
+    def _text_delete(self, t):
+        try:
+            t.remove()
+        except (ValueError, NotImplementedError):
+            return
+        self._draw()
+
+    def _new_text(self):
+        """A new free label at the centre of the axes (axes coordinates), with the size of 'Etichette nel grafico'."""
+        if self.ax is None:
+            return
+        s = simpledialog.askstring("Nuova etichetta di testo", "Testo:", parent=self.root)
+        if not s:
+            return
+        t = self.ax.text(0.5, 0.5, s, transform=self.ax.transAxes, ha='center', va='center',
+                         fontsize=self.var_intext.get())
+        self._apply_font_to([t])
+        self._draw()
 
     def _apply_font(self):
         if self.ax is None or self._syncing:

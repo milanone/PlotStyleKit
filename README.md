@@ -21,6 +21,12 @@ without duplicating the code in each repo.
   axis limits, draggable legend (show/size/location), per-line label/colour/width/style, and
   a fixed publication figure size in cm (via the `single`/`double` presets above). Exports to
   PNG/SVG/PDF at the exact configured size (300 dpi), with an optional "bbox tight" crop.
+  The free text labels of the axes (`ax.texts`, e.g. wavelength numbers on a spectrum or panel letters) are objects:
+  drag one with the left button to move it (in data or axes coordinates alike), double-click to edit its text,
+  right-click for *Modifica testo / Colore / Dimensione font / Elimina* (that label only), and the *Nuova etichetta di
+  testo...* button adds a new one at the centre of the axes, sized like *Etichette nel grafico*. The legend keeps its own
+  drag, and while the toolbar's zoom or pan is active the clicks do not touch the labels. The edits are plain
+  matplotlib `Text` changes, so they go into the saved pickle and existing pickles need no regenerating.
   Can be run standalone or embedded by a host app (`PlotEditor.carica_figura(fig)` loads an
   in-memory figure into a `Toplevel`, as KleistekManager's `File → Edit Figure...` does).
 - `plotstylekit.py` — the integration module for host programs (versioned: `API`): finds and loads the two
@@ -50,6 +56,10 @@ program does not ask at every start, and a *File > PlotStyleKit...* item lets th
 their mind. Without PlotStyleKit the program must still work: plain matplotlib look, plain `savefig` and pickle
 for the figure, and no "Edit Figure" (which offers to locate PlotStyleKit instead). The test suite runs this very
 snippet (`tests/test_plotstylekit.py`), so it cannot drift from the documentation.
+
+`PSK_MIN_API` (the first constant of the snippet) is the API version the program needs: it is the only line that may
+differ from one program to another. API 1 is the first version; API 2 added the `unpin` parameter (a host that fixes its legend
+position on purpose keeps it in the figure it saves).
 
 <!-- bootstrap:begin -->
 ```python
