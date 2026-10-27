@@ -145,6 +145,9 @@ true physical size. The real monitor PPI is **not auto-detectable** (Tk reports 
 (PPI = `hypot(screen_px)/inches`) or a ruler method (measure a 600 px bar, immune to system scaling),
 both via `_set_screen_ppi()`.
 
+The window icon is `plot_editor.ico` (set with `iconbitmap` in `__init__`, ignored if it fails); `examples/make_icon.py`
+redraws it (white tile, black axes, classic BMP frames so that file managers read it).
+
 ## Figure pickle format
 
 Host apps produce the pickle this editor reads via plain `pickle.dump(fig, f)` on a live matplotlib

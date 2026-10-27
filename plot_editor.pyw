@@ -48,6 +48,10 @@ class PlotEditor:
     def __init__(self, root, path=None):
         self.root = root
         self.root.title("Plot Editor (matplotlib pickle)")
+        try:   # window icon, as a courtesy: the editor works without it (Windows only, .ico)
+            self.root.iconbitmap(os.path.join(os.path.dirname(os.path.abspath(__file__)), "plot_editor.ico"))
+        except tk.TclError:
+            pass
         self.root.geometry("1300x820")
 
         self.fig = None
