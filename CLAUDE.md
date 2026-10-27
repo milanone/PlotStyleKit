@@ -24,6 +24,21 @@ See `requirements.txt` (MIT-licensed, see `LICENSE`; tests in `tests/`, run with
 - `tkinter` — standard library GUI
 - `tkinterdnd2` — optional, enables drag-and-drop pickle loading
 
+## plotstylekit.py
+
+The host-side integration, in English (new code; the older modules keep their Italian names). A host used to carry its own
+copies of the code that locates `origin_style.py` / `plot_editor.pyw`, of 'Save Figure (pickle)' and of 'Edit Figure...';
+this module holds it once: `setup()`, `style()`, `screen_fonts()`, `unpin_legend()`, `publication_copy(fig, preset, clean)`,
+`save_pickle()` / `save_image()` and their `*_dialog()` versions, `edit_dialog()`. `API` (an int) is bumped when something a host
+calls changes incompatibly; hosts ask for a minimum. It loads the two other files from **its own folder**, so a host that
+vendors a copy takes the three files together.
+
+How a host finds it is the **bootstrap in README.md** (between the `bootstrap:begin/end` comments): lookup order local copy,
+`PLOTSTYLEKIT`, the folder the user chose (`~/.plotstylekit.json`), the sibling folder, `~/progetti/PlotStyleKit`. When it fails
+the host shows a warning asking for the folder, with a Cancel that is remembered (`declined`) and a File > PlotStyleKit... item;
+without the kit the host needs fallbacks (plain look, plain `savefig` / pickle, no editor). `tests/test_plotstylekit.py` executes
+the README snippet, so the documented bootstrap cannot drift. A breaking change needs `API` + 1 and a note here.
+
 ## origin_style.py
 
 The guiding goal is output that resembles modern Origin (2026) graphs (aspect ratio, font, relative
