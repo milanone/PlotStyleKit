@@ -54,3 +54,17 @@ def test_frame_controls(editor):
     editor.var_leg_fs.set(9)
     editor._apply_legend()
     assert editor.ax.get_legend().get_frame().get_linewidth() == 2.0
+
+
+def test_stale_pixel_offset_does_not_break_the_layout_on_load(tk_root):
+    # the legend frozen far outside the figure used to make tight_layout give up and clip the x label
+    top = tk.Toplevel(tk_root)
+    ed = pe.PlotEditor(top)
+    fig = Figure(figsize=(3.5, 2.6), dpi=300)
+    ax = fig.add_subplot(111)
+    ax.plot([0, 1], [0, 1], label='a')
+    ax.set_xlabel('x')
+    ax.legend()._legend_box.set_offset((900.0, 700.0))
+    ed.carica_figura(fig, title='t')
+    assert ed.ax.get_position().y0 > 0.15
+    top.destroy()

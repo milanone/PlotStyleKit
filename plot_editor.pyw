@@ -408,6 +408,9 @@ class PlotEditor:
 
         self.fig = fig
         self.ax = fig.axes[0]
+        for a in fig.axes:   # before any layout: a stale pixel offset puts the legend outside the figure and breaks tight_layout
+            if a.get_legend() is not None:
+                self._release_legend_offset(a.get_legend())
         # Sorgente di verità della dimensione di EXPORT (pollici = cm/2.54): non
         # dipende dal dpi di visualizzazione né dalle dimensioni del widget.
         self._export_in = tuple(self.fig.get_size_inches())
