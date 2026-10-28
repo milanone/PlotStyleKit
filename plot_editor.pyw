@@ -13,6 +13,7 @@ import os
 import sys
 import pickle
 import traceback
+import numpy as np
 import tkinter as tk
 from tkinter import filedialog, messagebox, colorchooser, simpledialog, ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
@@ -38,6 +39,8 @@ except Exception as _e:
     origin_style = None
     _origin_style_error = _e
 
+DATA_OPS = ['Aggiungi costante (y + c)', 'Moltiplica (y × c)', 'Sposta x (x + c)',
+            'Normalizza: massimo = c', 'Normalizza: y(x = c) = 1', 'Sottrai il minimo (y − min)']
 LINESTYLES = ['-', '--', '-.', ':', 'None']
 LEGEND_LOCS = ['best', 'upper right', 'upper left', 'lower left', 'lower right',
                'right', 'center left', 'center right', 'lower center',
@@ -325,6 +328,25 @@ class PlotEditor:
         cbs.grid(row=3, column=3, sticky='w', padx=2)
         cbs.bind('<<ComboboxSelected>>', lambda e: self._apply_line_style())
 
+        # --- Data of the selected line (simple maths) ---
+        lf6 = tk.LabelFrame(self.f_ctrl, text="Dati (linea selezionata)", bg=bg, font=('Arial', 9, 'bold'))
+        lf6.pack(fill=tk.X, padx=8, pady=6)
+        self.var_op = tk.StringVar(value=DATA_OPS[0])
+        ttk.Combobox(lf6, values=DATA_OPS, textvariable=self.var_op, width=26, state='readonly'
+                     ).grid(row=0, column=0, columnspan=3, sticky='w', padx=2, pady=2)
+        tk.Label(lf6, text="Valore:", bg=bg, font=('Arial', 9)).grid(row=1, column=0, sticky='e')
+        self.var_op_val = tk.StringVar(value='1')
+        e_op = tk.Entry(lf6, width=9, textvariable=self.var_op_val)
+        e_op.grid(row=1, column=1, sticky='w', padx=2)
+        e_op.bind('<Return>', lambda e: self._apply_data_op())
+        self.var_op_all = tk.BooleanVar(value=False)
+        tk.Checkbutton(lf6, text="Tutte le linee", variable=self.var_op_all, bg=bg,
+                       font=('Arial', 9)).grid(row=1, column=2, sticky='w')
+        tk.Button(lf6, text="Applica", command=self._apply_data_op, font=('Arial', 8)
+                  ).grid(row=2, column=0, sticky='we', padx=2, pady=2)
+        tk.Button(lf6, text="Annulla", command=self._undo_data_op, font=('Arial', 8)
+                  ).grid(row=2, column=1, sticky='we', padx=2, pady=2)
+
         # --- Stile Origin ---
         of = tk.LabelFrame(self.f_ctrl, text="Stile Origin", bg=bg, font=('Arial', 9, 'bold'))
         of.pack(fill=tk.X, padx=8, pady=(8, 0))
@@ -408,6 +430,7 @@ class PlotEditor:
 
         self.fig = fig
         self.ax = fig.axes[0]
+        self._data_undo = []
         for a in fig.axes:   # before any layout: a stale pixel offset puts the legend outside the figure and breaks tight_layout
             if a.get_legend() is not None:
                 self._release_legend_offset(a.get_legend())
@@ -811,6 +834,74 @@ class PlotEditor:
         if 0 <= idx < len(self.ax.lines):
             return self.ax.lines[idx]
         return None
+
+    def _apply_data_op(self):
+        """Simple maths on the y (or x) values of the selected line, or of all lines. The values really change
+        (they are saved in the pickle); Annulla undoes the operations of this session, one at a time."""
+        if self.ax is None:
+            return
+        lines = list(self.ax.lines) if self.var_op_all.get() else [self._selected_line()]
+        lines = [ln for ln in lines if ln is not None]
+        if not lines:
+            return
+        op = self.var_op.get()
+        try:
+            c = float(self.var_op_val.get().replace(',', '.'))
+        except ValueError:
+            messagebox.showerror("Dati", "Il valore deve essere un numero.")
+            return
+        new = []
+        for ln in lines:
+            x = np.asarray(ln.get_xdata(), dtype=float)
+            y = np.asarray(ln.get_ydata(), dtype=float)
+            nx, ny = x, y
+            if op == DATA_OPS[0]:                        # y + c
+                ny = y + c
+            elif op == DATA_OPS[1]:                      # y * c
+                ny = y * c
+            elif op == DATA_OPS[2]:                      # x + c
+                nx = x + c
+            elif op == DATA_OPS[3]:                      # normalise: maximum becomes c
+                m = np.nanmax(np.abs(y))
+                if not m:
+                    messagebox.showerror("Dati", "La linea è tutta a zero: impossibile normalizzare.")
+                    return
+                ny = y / m * c
+            elif op == DATA_OPS[4]:                      # normalise: y at x = c becomes 1
+                order = np.argsort(x)
+                if not (x[order][0] <= c <= x[order][-1]):
+                    messagebox.showerror("Dati", f"x = {c:g} è fuori dall'intervallo della linea "
+                                                 f"({x[order][0]:g}–{x[order][-1]:g}).")
+                    return
+                y0 = np.interp(c, x[order], y[order])
+                if not y0:
+                    messagebox.showerror("Dati", f"y(x = {c:g}) è zero: impossibile normalizzare.")
+                    return
+                ny = y / y0
+            elif op == DATA_OPS[5]:                      # subtract the minimum
+                ny = y - np.nanmin(y)
+            new.append((ln, x, y, nx, ny))
+        self._data_undo.append([(ln, x, y) for ln, x, y, _, _ in new])
+        for ln, _, _, nx, ny in new:
+            ln.set_data(nx, ny)
+        self._rescale_after_data_op(shift_x=(op == DATA_OPS[2]))
+
+    def _undo_data_op(self):
+        if not self._data_undo:
+            return
+        for ln, x, y in self._data_undo.pop():
+            ln.set_data(x, y)
+        self._rescale_after_data_op(shift_x=True)
+
+    def _rescale_after_data_op(self, shift_x):
+        """The data moved: refit y (and x after a shift) so the curve stays in view, and refresh the limit boxes."""
+        self.ax.relim()
+        self.ax.autoscale_view(scalex=shift_x, scaley=True)
+        xlo, xhi = self.ax.get_xlim()
+        ylo, yhi = self.ax.get_ylim()
+        self.var_xmin.set(f"{xlo:.4g}"); self.var_xmax.set(f"{xhi:.4g}")
+        self.var_ymin.set(f"{ylo:.4g}"); self.var_ymax.set(f"{yhi:.4g}")
+        self._draw()
 
     def _on_line_select(self):
         ln = self._selected_line()

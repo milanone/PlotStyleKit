@@ -68,3 +68,38 @@ def test_stale_pixel_offset_does_not_break_the_layout_on_load(tk_root):
     ed.carica_figura(fig, title='t')
     assert ed.ax.get_position().y0 > 0.15
     top.destroy()
+
+
+def _op(ed, name, value='1', all_lines=False):
+    ed.var_op.set(next(o for o in pe.DATA_OPS if o.startswith(name)))
+    ed.var_op_val.set(value)
+    ed.var_op_all.set(all_lines)
+    ed._apply_data_op()
+
+
+def test_data_operations_and_undo(editor):
+    import numpy as np
+    ln = editor.ax.lines[0]
+    y0 = np.array(ln.get_ydata(), dtype=float)
+    _op(editor, 'Aggiungi', '2')
+    assert np.allclose(ln.get_ydata(), y0 + 2)
+    _op(editor, 'Moltiplica', '3')
+    assert np.allclose(ln.get_ydata(), (y0 + 2) * 3)
+    _op(editor, 'Normalizza: massimo', '1')
+    assert np.isclose(np.max(np.abs(ln.get_ydata())), 1)
+    _op(editor, 'Normalizza: y(x', '0.5')          # the test line is y = x on [0, 1]
+    assert np.isclose(np.interp(0.5, ln.get_xdata(), ln.get_ydata()), 1)
+    for _ in range(4):
+        editor._undo_data_op()
+    assert np.allclose(ln.get_ydata(), y0)
+
+
+def test_data_operation_rejects_bad_input(editor, monkeypatch):
+    from unittest import mock
+    import numpy as np
+    monkeypatch.setattr(pe.messagebox, 'showerror', mock.Mock())
+    y0 = np.array(editor.ax.lines[0].get_ydata())
+    _op(editor, 'Aggiungi', 'abc')
+    _op(editor, 'Normalizza: y(x', '99')           # outside the x range
+    assert np.allclose(editor.ax.lines[0].get_ydata(), y0)
+    assert pe.messagebox.showerror.call_count == 2
