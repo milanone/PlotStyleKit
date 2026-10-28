@@ -188,3 +188,14 @@ def test_the_declined_choice_is_remembered(spots, monkeypatch):
     assert ns['_psk_config']()['declined'] is True
     ns['_psk_save'](path='X:/somewhere', declined=False)
     assert ns['_psk_config']() == {'declined': False, 'path': 'X:/somewhere'}
+
+
+def test_frozen_pixel_offset_of_a_clicked_legend_is_dropped_on_the_copy():
+    # a click on a draggable legend leaves a fixed pixel offset on its box, which then travels in the pickle
+    f, ax = plt.subplots()
+    ax.plot([0, 1], [0, 1], label='a')
+    leg = ax.legend()
+    leg._legend_box.set_offset((123.0, 45.0))
+    copy = psk.publication_copy(f, unpin=False)
+    assert callable(copy.axes[0].get_legend()._legend_box._offset)
+    plt.close(f)

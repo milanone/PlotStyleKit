@@ -278,6 +278,18 @@ class PlotEditor:
         cbl = ttk.Combobox(lf4, values=LEGEND_LOCS, textvariable=self.var_leg_loc, width=14, state='readonly')
         cbl.grid(row=1, column=1, columnspan=2, sticky='w', padx=2, pady=2)
         cbl.bind('<<ComboboxSelected>>', lambda e: self._apply_legend())
+        self.var_leg_frame = tk.BooleanVar(value=True)
+        tk.Checkbutton(lf4, text="Frame", variable=self.var_leg_frame, bg=bg, font=('Arial', 9),
+                       command=self._apply_legend_frame).grid(row=2, column=0, sticky='w')
+        tk.Button(lf4, text="Colore...", font=('Arial', 8), command=self._legend_frame_color
+                  ).grid(row=2, column=1, sticky='w', padx=2)
+        tk.Label(lf4, text="Width:", bg=bg, font=('Arial', 9)).grid(row=2, column=2, sticky='e')
+        self.var_leg_fw = tk.DoubleVar(value=0.8)
+        sp_fw = tk.Spinbox(lf4, from_=0.1, to=5, increment=0.1, width=4, textvariable=self.var_leg_fw,
+                           command=self._apply_legend_frame)
+        sp_fw.grid(row=2, column=3, sticky='w', padx=2)
+        sp_fw.bind('<Return>', lambda e: self._apply_legend_frame())
+        sp_fw.bind('<FocusOut>', lambda e: self._apply_legend_frame())
 
         # --- Linea selezionata ---
         lf5 = tk.LabelFrame(self.f_ctrl, text="Linea selezionata", bg=bg, font=('Arial', 9, 'bold'))
@@ -626,6 +638,16 @@ class PlotEditor:
         win.transient(self.root)
         win.grab_set()
 
+    @staticmethod
+    def _release_legend_offset(leg):
+        """Give the legend back to matplotlib's own placement. A click on a draggable legend freezes its box at a
+        fixed PIXEL offset (DraggableOffsetBox.save_offset) that outlives the drag and goes into the pickle: on
+        export at another dpi/size the legend then lands somewhere unrelated to its `loc`. Dragging also stores the
+        new position in `loc`, so dropping the stale pixel offset loses nothing."""
+        box = getattr(leg, '_legend_box', None)
+        if box is not None and not callable(getattr(box, '_offset', None)) and hasattr(leg, '_findoffset'):
+            box.set_offset(leg._findoffset)
+
     def _bake_legend(self):
         """Disattiva temporaneamente il draggable della legenda (mantenendone la
         posizione) prima di pickle/savefig: i callback del DraggableLegend non
@@ -634,6 +656,7 @@ class PlotEditor:
         leg = self.ax.get_legend() if self.ax else None
         if leg is not None and leg.get_draggable():
             leg.set_draggable(False)
+            self._release_legend_offset(leg)
             return True
         return False
 
@@ -746,6 +769,10 @@ class PlotEditor:
         if leg is not None:
             if leg.get_texts():
                 self.var_leg_fs.set(round(leg.get_texts()[0].get_size(), 1))
+            frame = leg.get_frame()
+            self.var_leg_frame.set(leg.get_frame_on())
+            self.var_leg_fw.set(round(frame.get_linewidth(), 2))
+            self._release_legend_offset(leg)   # pickles saved with a frozen pixel offset heal on load
             leg.set_draggable(True)   # rende trascinabile la legenda già presente (senza ricrearla)
 
         # limiti attuali come suggerimento
@@ -1170,6 +1197,29 @@ class PlotEditor:
         except Exception:
             return None
 
+    def _apply_legend_frame(self):
+        """Frame on/off and width of the legend box, applied to the existing legend."""
+        leg = self.ax.get_legend() if self.ax else None
+        if leg is None or self._syncing:
+            return
+        leg.set_frame_on(self.var_leg_frame.get())
+        try:
+            leg.get_frame().set_linewidth(float(self.var_leg_fw.get()))
+        except (tk.TclError, ValueError):
+            pass
+        self._draw()
+
+    def _legend_frame_color(self):
+        leg = self.ax.get_legend() if self.ax else None
+        if leg is None:
+            return
+        from matplotlib.colors import to_hex
+        init = to_hex(leg.get_frame().get_edgecolor()[:3])
+        rgb, hexcol = colorchooser.askcolor(color=init, title="Colore frame legenda", parent=self.root)
+        if hexcol:
+            leg.get_frame().set_edgecolor(hexcol)
+            self._draw()
+
     def _apply_legend(self, preserve_pos=False):
         if self.ax is None or self._syncing:
             return
@@ -1201,6 +1251,13 @@ class PlotEditor:
         # Se richiesto (refresh dopo modifica di una linea), conserva la posizione
         # trascinata invece di ripiombare sul 'loc' del menu.
         anchor = self._legend_anchor() if preserve_pos else None
+        # The recreated legend must keep the frame the old one had (otherwise resizing the font added the
+        # default frame back).
+        old_frame = None
+        if old_leg is not None:
+            of = old_leg.get_frame()
+            old_frame = (old_leg.get_frame_on(), of.get_edgecolor(), of.get_linewidth(),
+                         of.get_facecolor(), of.get_alpha())
         if anchor is not None:
             # borderaxespad=0: l'angolo in basso a sinistra atterra ESATTAMENTE
             # sull'ancora misurata. Col padding di default (0.5) ogni ricreazione
@@ -1212,6 +1269,14 @@ class PlotEditor:
         else:
             leg = self.ax.legend(handles, labels, fontsize=self.var_leg_fs.get(), loc=self.var_leg_loc.get())
         if leg is not None:
+            if old_frame is not None:
+                on, ec, lw, fc, al = old_frame
+                leg.set_frame_on(on)
+                fr = leg.get_frame()
+                fr.set_edgecolor(ec)
+                fr.set_linewidth(lw)
+                fr.set_facecolor(fc)
+                fr.set_alpha(al)
             if self._font_family:
                 self._apply_font_to(leg.get_texts())   # la legenda ricreata riprende il font
             leg.set_draggable(True)                     # trascinabile con il mouse

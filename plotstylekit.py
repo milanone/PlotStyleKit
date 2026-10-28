@@ -87,6 +87,15 @@ def screen_fonts(ax, fig=None, tick=10, label=11, legend=10):
             pass
 
 
+def release_legend_offset(ax):
+    """Drop the fixed pixel offset a click on a draggable legend leaves on its box (and that gets pickled): the
+    legend would stay at that pixel position whatever the size or dpi of the export."""
+    leg = ax.get_legend()
+    box = getattr(leg, '_legend_box', None)
+    if box is not None and not callable(getattr(box, '_offset', None)) and hasattr(leg, '_findoffset'):
+        box.set_offset(leg._findoffset)
+
+
 def unpin_legend(ax):
     """Put the legend of `ax` back to loc='best', dropping an anchor a host pinned on its stretched view (the
     anchor computed there misplaces the legend on the 4:3 / 16:9 copy)."""
@@ -109,6 +118,8 @@ def publication_copy(fig, preset='single', clean=None, unpin=True):
     copy = pickle.loads(pickle.dumps(fig))
     if clean is not None:
         clean(copy)
+    for ax in copy.axes:
+        release_legend_offset(ax)
     if unpin:
         for ax in copy.axes:
             unpin_legend(ax)
