@@ -124,11 +124,42 @@ class PlotEditor:
     # ==================================================================
     # COSTRUZIONE CONTROLLI
     # ==================================================================
+    def _scrolled_tab(self, nb, title):
+        """A notebook tab whose content scrolls (mouse wheel over it, or the bar): returns the inner frame."""
+        bg = '#f0f4f7'
+        outer = tk.Frame(nb, bg=bg)
+        nb.add(outer, text=title)
+        cv = tk.Canvas(outer, bg=bg, highlightthickness=0)
+        vb = tk.Scrollbar(outer, orient=tk.VERTICAL, command=cv.yview)
+        cv.configure(yscrollcommand=vb.set)
+        vb.pack(side=tk.RIGHT, fill=tk.Y)
+        cv.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        inner = tk.Frame(cv, bg=bg)
+        win = cv.create_window((0, 0), window=inner, anchor='nw')
+        inner.bind('<Configure>', lambda e: cv.configure(scrollregion=cv.bbox('all')))
+        cv.bind('<Configure>', lambda e: cv.itemconfigure(win, width=e.width))
+
+        def wheel(e):
+            if inner.winfo_reqheight() > cv.winfo_height():      # nothing to scroll: leave the wheel alone
+                cv.yview_scroll(-1 if e.delta > 0 else 1, 'units')
+        cv.bind('<Enter>', lambda e: cv.bind_all('<MouseWheel>', wheel))
+        cv.bind('<Leave>', lambda e: cv.unbind_all('<MouseWheel>'))
+        return inner
+
     def _build_controls(self):
         bg = '#f0f4f7'
+        # Buttons and hint stay visible under the tabs; the controls are grouped in scrollable tabs.
+        self._ctrl_bottom = tk.Frame(self.f_ctrl, bg=bg)
+        self._ctrl_bottom.pack(side=tk.BOTTOM, fill=tk.X)
+        nb = ttk.Notebook(self.f_ctrl)
+        nb.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        t_fig = self._scrolled_tab(nb, "Figura")
+        t_axes = self._scrolled_tab(nb, "Assi")
+        t_leg = self._scrolled_tab(nb, "Legenda")
+        t_lines = self._scrolled_tab(nb, "Linee")
 
         # --- Titolo & assi ---
-        lf = tk.LabelFrame(self.f_ctrl, text="Titolo & assi", bg=bg, font=('Arial', 9, 'bold'))
+        lf = tk.LabelFrame(t_fig, text="Titolo & assi", bg=bg, font=('Arial', 9, 'bold'))
         lf.pack(fill=tk.X, padx=8, pady=6)
 
         self.var_title = tk.StringVar()
@@ -177,7 +208,7 @@ class PlotEditor:
             row=7, column=0, columnspan=3, sticky='w', padx=6, pady=(0, 4))
 
         # --- Dimensione figura (fissa, per paper) ---
-        lfs = tk.LabelFrame(self.f_ctrl, text="Dimensione figura (cm)", bg=bg, font=('Arial', 9, 'bold'))
+        lfs = tk.LabelFrame(t_fig, text="Dimensione figura (cm)", bg=bg, font=('Arial', 9, 'bold'))
         lfs.pack(fill=tk.X, padx=8, pady=6)
         tk.Label(lfs, text="Larg.:", bg=bg, font=('Arial', 9)).grid(row=0, column=0, sticky='e', pady=2)
         self.var_w_cm = tk.StringVar()
@@ -217,7 +248,7 @@ class PlotEditor:
                  row=4, column=0, columnspan=5, sticky='w')
 
         # --- Scala & griglia ---
-        lf2 = tk.LabelFrame(self.f_ctrl, text="Scala & griglia", bg=bg, font=('Arial', 9, 'bold'))
+        lf2 = tk.LabelFrame(t_axes, text="Scala & griglia", bg=bg, font=('Arial', 9, 'bold'))
         lf2.pack(fill=tk.X, padx=8, pady=6)
         tk.Label(lf2, text="X scale:", bg=bg, font=('Arial', 9)).grid(row=0, column=0, sticky='e', padx=2, pady=2)
         self.var_xscale = tk.StringVar(value='linear')
@@ -248,7 +279,7 @@ class PlotEditor:
                  fg='#555').grid(row=3, column=0, columnspan=4, sticky='w', padx=2)
 
         # --- Limiti assi ---
-        lf3 = tk.LabelFrame(self.f_ctrl, text="Limiti assi (vuoto = auto)", bg=bg, font=('Arial', 9, 'bold'))
+        lf3 = tk.LabelFrame(t_axes, text="Limiti assi (vuoto = auto)", bg=bg, font=('Arial', 9, 'bold'))
         lf3.pack(fill=tk.X, padx=8, pady=6)
         self.var_xmin, self.var_xmax = tk.StringVar(), tk.StringVar()
         self.var_ymin, self.var_ymax = tk.StringVar(), tk.StringVar()
@@ -264,7 +295,7 @@ class PlotEditor:
                   font=('Arial', 8)).grid(row=0, column=3, rowspan=2, padx=4)
 
         # --- Legenda ---
-        lf4 = tk.LabelFrame(self.f_ctrl, text="Legenda", bg=bg, font=('Arial', 9, 'bold'))
+        lf4 = tk.LabelFrame(t_leg, text="Legenda", bg=bg, font=('Arial', 9, 'bold'))
         lf4.pack(fill=tk.X, padx=8, pady=6)
         self.var_legend = tk.BooleanVar(value=True)
         tk.Checkbutton(lf4, text="Mostra", variable=self.var_legend, bg=bg, font=('Arial', 9),
@@ -295,7 +326,7 @@ class PlotEditor:
         sp_fw.bind('<FocusOut>', lambda e: self._apply_legend_frame())
 
         # --- Linea selezionata ---
-        lf5 = tk.LabelFrame(self.f_ctrl, text="Linea selezionata", bg=bg, font=('Arial', 9, 'bold'))
+        lf5 = tk.LabelFrame(t_lines, text="Linea selezionata", bg=bg, font=('Arial', 9, 'bold'))
         lf5.pack(fill=tk.X, padx=8, pady=6)
         tk.Label(lf5, text="Linea:", bg=bg, font=('Arial', 9)).grid(row=0, column=0, sticky='e', pady=2)
         self.var_line = tk.StringVar()
@@ -329,7 +360,7 @@ class PlotEditor:
         cbs.bind('<<ComboboxSelected>>', lambda e: self._apply_line_style())
 
         # --- Data of the selected line (simple maths) ---
-        lf6 = tk.LabelFrame(self.f_ctrl, text="Dati (linea selezionata)", bg=bg, font=('Arial', 9, 'bold'))
+        lf6 = tk.LabelFrame(t_lines, text="Dati (linea selezionata)", bg=bg, font=('Arial', 9, 'bold'))
         lf6.pack(fill=tk.X, padx=8, pady=6)
         self.var_op = tk.StringVar(value=DATA_OPS[0])
         ttk.Combobox(lf6, values=DATA_OPS, textvariable=self.var_op, width=26, state='readonly'
@@ -348,7 +379,7 @@ class PlotEditor:
                   ).grid(row=2, column=1, sticky='we', padx=2, pady=2)
 
         # --- Stile Origin ---
-        of = tk.LabelFrame(self.f_ctrl, text="Stile Origin", bg=bg, font=('Arial', 9, 'bold'))
+        of = tk.LabelFrame(t_fig, text="Stile Origin", bg=bg, font=('Arial', 9, 'bold'))
         of.pack(fill=tk.X, padx=8, pady=(8, 0))
         tk.Label(of, text="Layout:", bg=bg, font=('Arial', 9)).grid(row=0, column=0, sticky='e', pady=2)
         self._layout_map = {'Colonna singola (4:3)': 'single', 'Doppia colonna (16:9)': 'double'}
@@ -360,14 +391,14 @@ class PlotEditor:
                                                                  sticky='we', padx=2, pady=(4, 4))
 
         # --- Salvataggi ---
-        bf = tk.Frame(self.f_ctrl, bg=bg)
+        bf = tk.Frame(self._ctrl_bottom, bg=bg)
         bf.pack(fill=tk.X, padx=8, pady=10)
         tk.Button(bf, text="Save pickle", command=self.salva_pickle,
                   bg='#e8f5e9').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
         tk.Button(bf, text="Export image", command=self.esporta_immagine,
                   bg='#dce8f5').pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
 
-        self.hint = tk.Label(self.f_ctrl, text="Apri un .fig.pickle (menu File o drag&drop).",
+        self.hint = tk.Label(self._ctrl_bottom, text="Apri un .fig.pickle (menu File o drag&drop).",
                              bg=bg, font=('Arial', 8), fg='#555', wraplength=360, justify=tk.LEFT)
         self.hint.pack(fill=tk.X, padx=10, pady=4)
 
