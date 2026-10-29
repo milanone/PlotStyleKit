@@ -705,6 +705,25 @@ class PlotEditor:
         if box is not None and not callable(getattr(box, '_offset', None)) and hasattr(leg, '_findoffset'):
             box.set_offset(leg._findoffset)
 
+    def _commit_legend_drag(self, leg):
+        """Turn the pixel offset a drag leaves on the legend box into a real anchor (lower-left corner in axes
+        fractions, borderaxespad 0), the same form _apply_legend(preserve_pos=True) uses. Without it the dropped
+        position lives only in screen pixels: it is lost when the offset is released (export, save) or lands
+        elsewhere at another dpi/size."""
+        box = getattr(leg, '_legend_box', None)
+        if box is None or callable(getattr(box, '_offset', None)):
+            return
+        try:
+            self.canvas.draw()
+            bb = leg.get_window_extent()
+            x0, y0 = self.ax.transAxes.inverted().transform((bb.x0, bb.y0))
+            leg.set_bbox_to_anchor((x0, y0), transform=self.ax.transAxes)
+            leg.set_loc(3)                                   # 'lower left'
+            leg.borderaxespad = 0.0
+            box.set_offset(leg._findoffset)
+        except Exception:
+            traceback.print_exc()
+
     def _bake_legend(self):
         """Disattiva temporaneamente il draggable della legenda (mantenendone la
         posizione) prima di pickle/savefig: i callback del DraggableLegend non
@@ -1058,6 +1077,7 @@ class PlotEditor:
         leg = self.ax.get_legend() if self.ax is not None else None
         drag = getattr(leg, '_draggable', None)
         if drag is not None and drag.got_artist:
+            self._commit_legend_drag(leg)   # this handler runs before matplotlib's own release: keep the drop position
             drag.got_artist = False
 
     def _guard_legend_drag(self, event):

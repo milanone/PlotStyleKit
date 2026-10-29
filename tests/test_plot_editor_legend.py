@@ -103,3 +103,32 @@ def test_data_operation_rejects_bad_input(editor, monkeypatch):
     _op(editor, 'Normalizza: y(x', '99')           # outside the x range
     assert np.allclose(editor.ax.lines[0].get_ydata(), y0)
     assert pe.messagebox.showerror.call_count == 2
+
+
+def test_dragged_legend_keeps_its_position_through_export_and_dpi(editor, tmp_path, monkeypatch):
+    from unittest import mock
+    from matplotlib.backend_bases import MouseEvent
+    ed = editor
+    ed.canvas.draw()
+
+    def send(name, x, y):
+        MouseEvent(name, ed.canvas, x, y, button=1, guiEvent=mock.Mock(x_root=50, y_root=60))._process()
+
+    def rel():
+        ed.canvas.draw()
+        b, a = ed.ax.get_legend().get_window_extent(), ed.ax.get_window_extent()
+        return ((b.x0 - a.x0) / a.width, (b.y0 - a.y0) / a.height)
+
+    b = ed.ax.get_legend().get_window_extent()
+    cx, cy = (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2
+    send('button_press_event', cx, cy)
+    send('motion_notify_event', cx - 40, cy - 40)
+    send('button_release_event', cx - 40, cy - 40)
+    dropped = rel()
+    monkeypatch.setattr(pe.filedialog, 'asksaveasfilename', lambda **k: str(tmp_path / 'f.png'))
+    monkeypatch.setattr(pe.messagebox, 'showinfo', mock.Mock())
+    ed.esporta_immagine()
+    for dpi in (None, 300, 80):
+        if dpi:
+            ed.fig.set_dpi(dpi)
+        assert rel() == pytest.approx(dropped, abs=1e-3)
